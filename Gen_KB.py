@@ -35,43 +35,100 @@ def checkstatement(rule, data):
             status = "Undecidable"
     return status
 
-def query_to_feats(sentence):
-    sentence = sentence.lower()
-    question_words = ["does", "what", "can"]
-    query_features = {1:-1,2:-1,3:-1,4:-1}
-    target = -1
-    values = []
-    for c in range(len(class_names)):
-        if class_names[c] in sentence:
-            target = c
-    for t in sentence.split():
-        if len(t) > 1:
-            if t[0] == ',':
-                t = t[1:]
-            if t[len(t)-1] == ',':
-                t = t[:len(t)-1]
-        try:
-            values.append(float(t))
-        except ValueError:
-            pass
-    fpositions = []
-    for f in feature_names:
-        loc = sentence.find(f)
-        if loc == -1:
-            pass
+def query_eval(query, KB):
+    # Query set has known info and requested unknowns
+    # EG : sl is 0.3, pl is 0.5, class is setosa, what is pw
+    d = {}
+    requests = []
+    feats = ["sl", "sw", "pl", "pw"]
+    class_list = ["setosa","versicolour","virginica"]
+    target_class = -1
+    query = query.split(",")
+    feat_request = 0
+    for sub in query:
+        sub.rstrip(" ")
+        sub.rstrip(".")
+        sub.rstrip("?")
+        sub.lstrip(" ")
+        info = sub.split(" ")
+        if info[0] == '':
+            info = info[1:]
+        if info[0] == "class":
+            target_class = class_list.index(info[2])
+        elif info[0] == "what":
+            index = feats.index(info[2])
+            requests.append(index+1)
+            feat_request+= 1
         else:
-            fpositions.append([feature_names.index(f)+1,loc])
-    fpositions.sort(key = lambda x: x[1]) 
-    for k in range(len(values)):
-        query_features[fpositions[k][0]] = values[k]
-    return (query_features, target)
+            index = feats.index(info[0])
+            d[index+1] = float(info[2])
+    print(d)
+    print(requests)
+    if feat_request > 0 and target_class == -1 :
+        print("Too many requests but not enough info!")
+    else:
+        if target_class != -1:
+            nonefound = True
+            answers = []
+            for rule in KB:
+                rule_ans = []
+                status = True
+                if rule[1] == target_class:
+                    for clause in rule[0]:
+                        if clause[1] in d.keys():
+                            if status == True:
+                                status = checkclause(clause, d)
+                        else:
+                            if clause[1] in requests:
+                                rule_ans.append(clause)
+                    if status == True:
+                        answers.append(rule_ans)
+            print("Entailments are:")
+            for ans in answers:
+                print(ans)
+                        
+                            
+                #finish this
+                # check how many requirements the rule meets and see the ones with -1
+                # results will be the clause of the -1 feat in the rule and anything if it's absent
+                
+        else:   # Just evaluating features and finding class
+             eval_featset(d,KB)
+        
+        
+            
+            
+def eval_featset(feat_set, KB):
+    classes_reached = []
+    err = False
+    for rule in KB:
+        result = checkstatement(rule[0],feat_set)
+        if result == True:
+            for c in classes_reached:
+                if c!=rule[1]:
+                    err = True
+                    break
+                classes_reached.append(rule[1])
+    if len(classes_reached) == 0:
+        classes_reached = ["Undecidable"]
+    if not err:
+        print("The datapoint belongs to class ",classes_reached[0])
+    else:
+        print("Conflicting rules! Check the KB!")
 
-
-s1 = "Petal length is 0.4, Sepal Width is -0.5. Does the flower belong to the class Virginica?"
-print(query_to_feats(s1))
-s2 = "When Sepal Length is less 0.5, what should be Petal Length so that, the flower belongs to the class Setosa?"
-print(query_to_feats(s2))
-    
+def addrule(rule, kb):
+    rule = rule.split("=>")
+    rule[0] = "["+rule[0]+"]"
+    clause = ast.literal_eval(rule[0])
+    implication = int(rule[1])
+    add = True
+    for index in range(len(kb)):
+        if kb[index][0] == clause:
+            if kb[index][1] != implication:
+                print("Attempting to insert a conflicting rule!")
+            add = False
+    if add:
+        kb.append([clause, implication])
     
 
 
@@ -90,7 +147,7 @@ for line in contents:
         features.append(sample_features)
         explanations.append(sample_reason)
         classes.append(sample_class)
-
+        
 rules = []
 inferences = {}
 
@@ -120,13 +177,15 @@ for r in range(len(rules)):
             pred_count = inferences[rules[r]][inf][1]
             best_pred = inferences[rules[r]][inf][0]
     final_inf.append(best_pred)
-  
 
+
+verbose = input(("Rules read from database. View them? (Y/N)"))
+if verbose == "Y" or verbose == "y":
+    for i in range(len(rules)):
+        print(i, rules[i], inferences[rules[i]])
+    print("********")
+    
 print()
-print("Rules generated:")
-for i in range(len(rules)):
-    print(i, rules[i], inferences[rules[i]])
-
 KB = []
 print("Choosing majority inference to remove noise")
 print()
@@ -137,42 +196,64 @@ for k in range(len(final_rules)):
 
 print()
 print("#######")
+print("""
+To query use the following phrases:
+Feature 1 is Sepal Length. Use sl in query
+Feature 2 is Sepal Width. Use sw in query
+Feature 3 is Petal Length. Use pl in query
+Feature 4 is Petal Width. Use pw in query
+
+Class 0 : setosa
+Class 1 : virginica
+Class 2 : versicolour
+
+Example query : what is pw, class is virginica, pl is 1.5
+
+""")
+print("#######")
 print()
 print("""
 Select:
 1. To ask a query
 2. To add a rule
 3. To delete a rule
+4. To predict the class of a feature set
 Anything else to exit
 """)
 while(True):
     option = int(input("Your choice : "))
     if option == 1:
         question = input("Enter query :")
-
+        query_eval(question, KB)
     elif option == 2:
-        #TODO
-        print("kek")
+        user_rule = input("Enter a rule :")
+        addrule(user_rule, KB)
+        print("Final KB:")
+        for k in KB:
+            print("Rule:",k[0],"->",k[1])
     elif option == 3:
-        #TODO
-        print("kek")
+        print("Current KB")
+        ct = 0
+        for k in KB:
+            ct += 1
+            print("Rule No.",ct," :",k[0],"->",k[1])
+        choice = int(input("Enter index of the rule you wish to delete:"))
+        index = choice-1
+        if index in range(0,len(KB)):
+            KB.remove(KB[index])
+            print("Rule deleted!")
+            print("KB is now:")
+            ct = 0
+            for k in KB:
+                ct += 1
+                print("Rule No.",ct," :",k[0],"->",k[1])
+        else:
+            print("Sorry that rule doesn't exist!")
+    elif option == 4:
+        feat_set =  input("Enter a dictionary of feature values:")
+        feat_set = ast.literal_eval(feat_set)
+        eval_featset(feat_set, KB)
+
     else:
         break
     
-
-"""
-testfeat = input("Enter a feature set:")
-testfeat = ast.literal_eval(testfeat)
-# testfeat = {1:-0.4,2:0.4,3:0.9,4:0.1}
-
-for rule in KB:
-    #print("Checking rule:", rule)
-    result = checkstatement(rule[0], testfeat)
-    if  result == True:
-        print(rule[0], "is true")
-        print("Class inferred ->",rule[1])
-    elif result  == False:
-        print(rule[0], "is false")
-    elif result == "Undecidable":
-        print(rule[0], "is undecidable")
-"""
