@@ -14,7 +14,7 @@ classes = []
 def checkclause(clause, data):
     direction, fno, cutpoint = clause
     if direction == 'L':
-        if data[fno] < cutpoint :
+        if data[fno] <= cutpoint :
             return True
         else:
             return False
@@ -34,6 +34,21 @@ def checkstatement(rule, data):
         else:
             status = "Undecidable"
     return status
+
+def rule_to_eng(rule):
+    feats = ["sepal length", "sepal width", "petal length", "petal width"]
+    for clause_index in range(len(rule)):
+        direction,fno,val = rule[clause_index]
+        print(feats[fno-1], " is ", end=" ")
+        if direction == 'L':
+            print("less than or equal to",end=" ")
+        else:
+            print("greater than",end=" ")
+        print(val,end=" ")
+        if clause_index != len(rule)-1:
+            print("AND", end=" ")
+        else:
+            print()
 
 def query_eval(query, KB):
     # Query set has known info and requested unknowns
@@ -56,14 +71,13 @@ def query_eval(query, KB):
         if info[0] == "class":
             target_class = class_list.index(info[2])
         elif info[0] == "what":
-            index = feats.index(info[2])
-            requests.append(index+1)
-            feat_request+= 1
+            if info[2] != "class":
+                index = feats.index(info[2])
+                requests.append(index+1)
+                feat_request+= 1
         else:
             index = feats.index(info[0])
             d[index+1] = float(info[2])
-    print(d)
-    print(requests)
     if feat_request > 0 and target_class == -1 :
         print("Too many requests but not enough info!")
     else:
@@ -83,14 +97,12 @@ def query_eval(query, KB):
                                 rule_ans.append(clause)
                     if status == True:
                         answers.append(rule_ans)
-            print("Entailments are:")
-            for ans in answers:
-                print(ans)
-                        
-                            
-                #finish this
-                # check how many requirements the rule meets and see the ones with -1
-                # results will be the clause of the -1 feat in the rule and anything if it's absent
+            if len(answers) == 0:
+                print("This can never occur according to the KB")
+            else:
+                print("Entailments are:")
+                for ans in answers:
+                    rule_to_eng(ans)
                 
         else:   # Just evaluating features and finding class
              eval_featset(d,KB)
@@ -104,18 +116,16 @@ def eval_featset(feat_set, KB):
     for rule in KB:
         result = checkstatement(rule[0],feat_set)
         if result == True:
-            for c in classes_reached:
-                if c!=rule[1]:
-                    err = True
-                    break
-                classes_reached.append(rule[1])
+            classes_reached.append(rule[1])
+    classes_reached = list(set(classes_reached))
     if len(classes_reached) == 0:
         classes_reached = ["Undecidable"]
-    if not err:
+        print("The class is undecidable!")
+    elif len(classes_reached) == 1:
         print("The datapoint belongs to class ",classes_reached[0])
     else:
-        print("Conflicting rules! Check the KB!")
-
+        print("Conflicting rules!")
+  
 def addrule(rule, kb):
     rule = rule.split("=>")
     rule[0] = "["+rule[0]+"]"
